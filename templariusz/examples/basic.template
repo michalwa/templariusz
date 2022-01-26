@@ -1,1 +1,4 @@
 Hello, {{ self.name }}!
+{% for item in &self.items %}
+    - {{ item }}
+{% end %}
