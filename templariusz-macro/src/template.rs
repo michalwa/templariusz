@@ -38,9 +38,12 @@ impl FromStr for Template {
 
         for (start, open_delim) in match_indices {
             if start > last_end {
-                tokens.push(Token::Literal(
-                    s[last_end..start].trim_end_matches(&['\n', '\r']).into(),
-                ));
+                let mut literal = s[last_end..start].to_string();
+                if literal.ends_with('\n') {
+                    literal.pop();
+                    if literal.ends_with('\r') { literal.pop(); }
+                }
+                tokens.push(Token::Literal(literal));
             }
 
             let close_delim = match open_delim {
@@ -57,8 +60,12 @@ impl FromStr for Template {
 
             match open_delim {
                 "{%" => {
-                    if inner.trim() == "end" {
+                    let keyword = inner.trim();
+                    if keyword == "end" {
                         tokens.push(Token::BlockEnd);
+                    } else if keyword == "else" {
+                        tokens.push(Token::BlockEnd);
+                        tokens.push(Token::BlockBegin(inner.parse()?));
                     } else {
                         tokens.push(Token::BlockBegin(inner.parse()?));
                     }
@@ -112,9 +119,7 @@ impl FromStr for Template {
             }
         }
 
-        Ok(Template(
-            block_stack.pop().map(Part::Block).unwrap_or_default(),
-        ))
+        Ok(Template(Part::Block(block_stack.pop().unwrap())))
     }
 }
 
@@ -136,7 +141,6 @@ impl Template {
 }
 
 enum Part {
-    Empty,
     Literal(String),
     Eval(TokenStream),
     Block(Block),
@@ -147,16 +151,9 @@ struct Block {
     body: Vec<Part>,
 }
 
-impl Default for Part {
-    fn default() -> Self {
-        Self::Empty
-    }
-}
-
 impl Part {
     fn emit_render(self) -> TokenStream {
         match self {
-            Self::Empty => TokenStream::new(),
             Self::Literal(lit) => quote! { result.push_str(#lit); },
             Self::Eval(code) => quote! { write!(&mut result, "{}", { #code }).unwrap(); },
             Self::Block(Block { begin, body }) => {

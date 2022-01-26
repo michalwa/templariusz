@@ -4,3 +4,9 @@ Items:
     - {{ item }}
 {% end %}
 Numbers: {% for number in self.numbers %}{{ number }}, {% end %}
+
+{% if self.morning %}
+    Good morning
+{% else %}
+    Good evening
+{% end %}
