@@ -1,4 +1,6 @@
 Hello, {{ self.name }}!
-{% for item in &self.items %}
+Items:
+{% for item in self.items %}
     - {{ item }}
 {% end %}
+Numbers: {% for number in self.numbers %}{{ number }}, {% end %}

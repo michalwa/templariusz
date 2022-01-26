@@ -125,6 +125,7 @@ impl Template {
         quote! {
             impl ::templariusz::Template for #struct_name {
                 fn render(self) -> String {
+                    use ::std::fmt::Write;
                     let mut result = String::new();
                     #body
                     result
@@ -157,7 +158,7 @@ impl Part {
         match self {
             Self::Empty => TokenStream::new(),
             Self::Literal(lit) => quote! { result.push_str(#lit); },
-            Self::Eval(code) => quote! { result.push_str(&{ #code }); },
+            Self::Eval(code) => quote! { write!(&mut result, "{}", { #code }).unwrap(); },
             Self::Block(Block { begin, body }) => {
                 let inner = body
                     .into_iter()
