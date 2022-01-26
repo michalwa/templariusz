@@ -1,6 +1,6 @@
 use templariusz::{Template, template};
 
-#[template("Hello, {{ self.name }}!")]
+#[template(path = "basic.template")]
 struct Greeting {
     name: String,
 }

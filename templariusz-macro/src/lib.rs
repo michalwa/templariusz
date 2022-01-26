@@ -1,7 +1,10 @@
-use std::str::FromStr;
-use proc_macro2::TokenStream;
-use syn::{self, ItemStruct, LitStr, Ident};
+#![feature(proc_macro_span)]
+
+use std::{str::FromStr, fs};
+use proc_macro2::{TokenStream};
+use syn::{self, AttributeArgs, ItemStruct, Ident, parse_macro_input};
 use quote::quote;
+use darling::FromMeta;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -23,13 +26,13 @@ struct Template {
 
 impl FromStr for Template {
     type Err = TemplateParseError;
-    
+
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut parts = vec![];
 
         let outer = if let Some(end) = s.find("{{") { &s[..end] } else { s };
         parts.push(TemplatePart::Literal(outer.into()));
-    
+
         for (start, _) in s.match_indices("{{") {
             let len = s[start..].find("}}").ok_or(TemplateParseError::UnterminatedEval)?;
             let inner = &s[start..(start + len)]
@@ -56,7 +59,7 @@ impl Template {
                 TemplatePart::Eval(code) => quote! { result.push_str(&{ #code }); },
             });
         }
-    
+
         quote! {
             impl templariusz::Template for #struct_name {
                 fn render(self) -> String {
@@ -69,20 +72,36 @@ impl Template {
     }
 }
 
+#[derive(Debug, FromMeta)]
+enum MacroArgs {
+    Source(String),
+    Path(String),
+}
+
 #[proc_macro_attribute]
 pub fn template(
     attr: proc_macro::TokenStream,
     item: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
-    let attr = TokenStream::from(attr);
     let item = TokenStream::from(item);
-
     let mut result = item.clone();
 
-    let template_lit: LitStr = syn::parse2(attr).unwrap();
+    let source_file = proc_macro::Span::call_site().source_file();
+
+    let args = parse_macro_input!(attr as AttributeArgs);
     let template_struct: ItemStruct = syn::parse2(item).unwrap();
 
-    let template: Template = template_lit.value().parse().unwrap();
+    let args = MacroArgs::from_list(&args).unwrap();
+
+    let source = match args {
+        MacroArgs::Source(source) => source,
+        MacroArgs::Path(path) => {
+            let path = source_file.path().parent().unwrap().join(path);
+            fs::read_to_string(path).unwrap()
+        }
+    };
+
+    let template: Template = source.parse().unwrap();
     result.extend(template.emit_render(template_struct.ident));
 
     result.into()
