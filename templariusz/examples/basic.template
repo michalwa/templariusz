@@ -7,6 +7,6 @@ Numbers: {% for number in self.numbers %}{{ number }}, {% end %}
 
 {% if self.morning %}
     Good morning
-{% else %}
+{% else if self.evening %}
     Good evening
 {% end %}
