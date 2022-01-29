@@ -2,6 +2,7 @@ use proc_macro2::{Ident, TokenStream, TokenTree};
 use quote::quote;
 use std::str::FromStr;
 use thiserror::Error;
+use crate::utils::FindAny;
 
 #[derive(Debug, Error)]
 pub enum TemplateParseError {
@@ -81,17 +82,10 @@ impl FromStr for Template {
 }
 
 impl Template {
-    fn next_of<'a>(delims: &[&str], s: &'a str) -> Option<(usize, &'a str)> {
-        delims
-            .iter()
-            .filter_map(|d| s.match_indices(d).next())
-            .min_by_key(|&(i, _)| i)
-    }
-
     fn tokenize(mut s: &str) -> Result<Vec<Token>, TemplateParseError> {
         let mut tokens = vec![];
 
-        while let Some((start, open_delim)) = Self::next_of(&["{%", "{{"], s) {
+        while let Some((start, open_delim)) = s.find_any(&["{%", "{{"]) {
             if start > 0 {
                 let mut literal = s[..start].to_string();
                 if literal.ends_with('\n') {
@@ -102,7 +96,7 @@ impl Template {
                 s = &s[start..];
             }
 
-            let (len, close_delim) = Self::next_of(&["%}", "}}"], s)
+            let (len, close_delim) = s.find_any(&["%}", "}}"])
                 .ok_or_else(|| TemplateParseError::Unmatched(open_delim.into()))?;
 
             let expected_close_delim = match open_delim {

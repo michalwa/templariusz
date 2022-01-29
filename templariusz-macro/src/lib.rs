@@ -7,6 +7,7 @@ use darling::FromMeta;
 use crate::template::Template;
 
 mod template;
+mod utils;
 
 #[derive(Debug, FromMeta)]
 enum MacroArgs {
