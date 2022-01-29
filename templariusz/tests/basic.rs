@@ -43,6 +43,8 @@ fn from_file() {
             "Numbers: 42, 30, 7, 15, ",
             "",
             "    Good evening",
+            "",
+            "Bye!",
         ],
     )
 }

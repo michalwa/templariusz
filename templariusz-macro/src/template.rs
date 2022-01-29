@@ -82,17 +82,23 @@ impl FromStr for Template {
 }
 
 impl Template {
+    /// Trims up to a single trailing newline and pushes a `Token::Literal`
+    /// into the `Vec`
+    fn push_literal(tokens: &mut Vec<Token>, literal: impl Into<String>) {
+        let mut literal = literal.into();
+        if literal.ends_with('\n') {
+            literal.pop();
+            if literal.ends_with('\r') { literal.pop(); }
+        }
+        tokens.push(Token::Literal(literal));
+    }
+
     fn tokenize(mut s: &str) -> Result<Vec<Token>, TemplateParseError> {
         let mut tokens = vec![];
 
         while let Some((start, open_delim)) = s.find_any(&["{%", "{{"]) {
             if start > 0 {
-                let mut literal = s[..start].to_string();
-                if literal.ends_with('\n') {
-                    literal.pop();
-                    if literal.ends_with('\r') { literal.pop(); }
-                }
-                tokens.push(Token::Literal(literal));
+                Self::push_literal(&mut tokens, &s[..start]);
                 s = &s[start..];
             }
 
@@ -133,6 +139,10 @@ impl Template {
             }
 
             s = s[len..].strip_prefix(close_delim).unwrap();
+        }
+
+        if !s.is_empty() {
+            Self::push_literal(&mut tokens, s);
         }
 
         Ok(tokens)

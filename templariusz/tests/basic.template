@@ -10,3 +10,5 @@ Numbers: {% for number in self.numbers %}{{ number }}, {% end %}
 {% else if self.evening %}
     Good evening
 {% end %}
+
+Bye!
