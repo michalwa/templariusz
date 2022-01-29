@@ -6,12 +6,16 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum TemplateParseError {
-    #[error("Unexpected token {0:?}")]
+    #[error("Unexpected {0:?}")]
     Unexpected(Token),
+    #[error("Unexpected token {0:?}")]
+    UnexpectedToken(TokenTree),
     #[error("Unmatched delimiter {0}")]
     Unmatched(String),
     #[error("Empty block")]
     EmptyBlock,
+    #[error("Missing yield name")]
+    MissingYieldName,
     #[error("{0}")]
     EvalError(#[from] proc_macro2::LexError),
 }
@@ -73,6 +77,9 @@ impl FromStr for Template {
                         .unwrap()
                         .body
                         .push(Part::Block(block));
+                }
+                Token::Yield(name) => {
+                    block_stack.last_mut().unwrap().body.push(Part::Yield(name));
                 }
             }
         }
@@ -138,6 +145,14 @@ impl Template {
                                 let pattern: TokenStream = left.collect();
                                 tokens.push(Token::BlockBegin(quote! { #pattern => }));
                             }
+                            "yield" => {
+                                let name = left.next().ok_or(TemplateParseError::MissingYieldName)?;
+                                tokens.push(Token::Yield(name));
+
+                                if let Some(token) = left.next() {
+                                    return Err(TemplateParseError::UnexpectedToken(token));
+                                }
+                            }
                             _ => tokens.push(Token::BlockBegin(inner_tokens)),
                         },
                         _ => tokens.push(Token::BlockBegin(inner_tokens)),
@@ -157,17 +172,54 @@ impl Template {
     }
 
     pub fn emit_render(self, struct_name: Ident) -> TokenStream {
-        let body = self.0.emit_render();
+        let mut context = Context::Content;
+        let body = self.0.emit_render(&mut context);
 
-        quote! {
-            impl ::templariusz::Template for #struct_name {
-                fn render(self) -> String {
-                    use ::std::fmt::Write;
-                    let mut result = String::new();
-                    #body
-                    result
+        let render = quote! {
+            use ::std::fmt::Write;
+            let mut result = String::new();
+            #body
+            result
+        };
+
+        match context {
+            Context::Content => {
+                quote! {
+                    impl ::templariusz::Template for #struct_name {
+                        fn render(self) -> String { #render }
+                    }
                 }
             }
+            Context::Layout(yields) => {
+                let content_params = yields
+                    .into_iter()
+                    .map(|name| quote! { #name: impl ::templariusz::Template, })
+                    .collect::<TokenStream>();
+
+                quote! {
+                    impl #struct_name {
+                        fn render_with(self, #content_params) -> String {
+                            use ::templariusz::Template;
+                            #render
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+enum Context {
+    Content,
+    Layout(Vec<TokenTree>),
+}
+
+impl Context {
+    fn push_yield(&mut self, name: TokenTree) {
+        match self {
+            Self::Layout(yields) => yields.push(name),
+            _ => *self = Self::Layout(vec![name]),
         }
     }
 }
@@ -179,12 +231,14 @@ pub enum Token {
     BlockBegin(TokenStream),    // if, for, while, match, =>
     BlockContinue(TokenStream), // else, else if
     BlockEnd,                   // end
+    Yield(TokenTree),
 }
 
 enum Part {
     Literal(String),
     Eval(TokenStream),
     Block(Block),
+    Yield(TokenTree),
 }
 
 struct Block {
@@ -193,17 +247,23 @@ struct Block {
 }
 
 impl Part {
-    fn emit_render(self) -> TokenStream {
+    fn emit_render(self, context: &mut Context) -> TokenStream {
         match self {
             Self::Literal(lit) => quote! { result.push_str(#lit); },
             Self::Eval(code) => quote! { write!(&mut result, "{}", { #code }).unwrap(); },
             Self::Block(Block { begin, body }) => {
                 let inner = body
                     .into_iter()
-                    .map(Self::emit_render)
+                    .map(|p| p.emit_render(context))
                     .collect::<TokenStream>();
 
                 quote! { #begin { #inner } }
+            }
+            Self::Yield(name) => {
+                context.push_yield(name.clone());
+                quote! {
+                    write!(&mut result, "{}", #name.render()).unwrap();
+                }
             }
         }
     }

@@ -1,7 +1,7 @@
 #![feature(proc_macro_span)]
 
 use std::fs;
-use proc_macro2::{TokenStream};
+use proc_macro2::TokenStream;
 use syn::{self, AttributeArgs, ItemStruct, parse_macro_input};
 use darling::FromMeta;
 use crate::template::Template;
