@@ -1,0 +1,11 @@
+Menu:
+{% for item in self.items %}
+{% match item %}
+{% case MenuItem::Pizza { toppings } %}
+  - Pizza with {{ toppings }}
+{% end %}
+{% case MenuItem::Kebab %}
+  - Kebab
+{% end %}
+{% end %}
+{% end %}
