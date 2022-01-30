@@ -23,7 +23,6 @@ impl FromStr for Template {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut block_stack = vec![Block {
-            kind: BlockKind::Block,
             begin: None,
             body: vec![],
         }];
@@ -42,7 +41,6 @@ impl FromStr for Template {
                 }
                 Token::BlockBegin(begin) => {
                     block_stack.push(Block {
-                        kind: BlockKind::Block,
                         begin: Some(begin),
                         body: vec![],
                     });
@@ -60,7 +58,6 @@ impl FromStr for Template {
                         .push(Part::Block(block));
 
                     block_stack.push(Block {
-                        kind: BlockKind::Block,
                         begin: Some(begin),
                         body: vec![],
                     });
@@ -76,13 +73,6 @@ impl FromStr for Template {
                         .unwrap()
                         .body
                         .push(Part::Block(block));
-                }
-                Token::MatchArmBegin(pattern) => {
-                    block_stack.push(Block {
-                        kind: BlockKind::MatchArm,
-                        begin: Some(pattern),
-                        body: vec![],
-                    });
                 }
             }
         }
@@ -144,7 +134,10 @@ impl Template {
                         TokenTree::Ident(ident) => match ident.to_string().as_ref() {
                             "end" => tokens.push(Token::BlockEnd),
                             "else" => tokens.push(Token::BlockContinue(inner_tokens)),
-                            "case" => tokens.push(Token::MatchArmBegin(left.collect())),
+                            "case" => {
+                                let pattern: TokenStream = left.collect();
+                                tokens.push(Token::BlockBegin(quote! { #pattern => }));
+                            }
                             _ => tokens.push(Token::BlockBegin(inner_tokens)),
                         },
                         _ => tokens.push(Token::BlockBegin(inner_tokens)),
@@ -183,30 +176,20 @@ impl Template {
 pub enum Token {
     Literal(String),
     Eval(TokenStream),
-    BlockBegin(TokenStream),    // if, for, while
+    BlockBegin(TokenStream),    // if, for, while, match, =>
     BlockContinue(TokenStream), // else, else if
     BlockEnd,                   // end
-    MatchArmBegin(TokenStream),
 }
 
-#[derive(Debug)]
 enum Part {
     Literal(String),
     Eval(TokenStream),
     Block(Block),
 }
 
-#[derive(Debug)]
 struct Block {
-    kind: BlockKind,
     begin: Option<TokenStream>,
     body: Vec<Part>,
-}
-
-#[derive(Debug)]
-enum BlockKind {
-    Block,
-    MatchArm,
 }
 
 impl Part {
@@ -214,29 +197,13 @@ impl Part {
         match self {
             Self::Literal(lit) => quote! { result.push_str(#lit); },
             Self::Eval(code) => quote! { write!(&mut result, "{}", { #code }).unwrap(); },
-            Self::Block(Block {
-                kind: BlockKind::Block,
-                begin,
-                body,
-            }) => {
+            Self::Block(Block { begin, body }) => {
                 let inner = body
                     .into_iter()
                     .map(Self::emit_render)
                     .collect::<TokenStream>();
 
                 quote! { #begin { #inner } }
-            }
-            Self::Block(Block {
-                kind: BlockKind::MatchArm,
-                begin: pattern,
-                body,
-            }) => {
-                let inner = body
-                    .into_iter()
-                    .map(Self::emit_render)
-                    .collect::<TokenStream>();
-
-                quote! { #pattern => { #inner } }
             }
         }
     }
