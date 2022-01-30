@@ -1,8 +1,8 @@
+use crate::utils::FindAny;
 use proc_macro2::{Ident, TokenStream, TokenTree};
 use quote::quote;
 use std::str::FromStr;
 use thiserror::Error;
-use crate::utils::FindAny;
 
 #[derive(Debug, Error)]
 pub enum TemplateParseError {
@@ -86,11 +86,17 @@ impl Template {
     /// into the `Vec`
     fn push_literal(tokens: &mut Vec<Token>, literal: impl Into<String>) {
         let mut literal = literal.into();
+
         if literal.ends_with('\n') {
             literal.pop();
-            if literal.ends_with('\r') { literal.pop(); }
+            if literal.ends_with('\r') {
+                literal.pop();
+            }
         }
-        tokens.push(Token::Literal(literal));
+
+        if !literal.is_empty() {
+            tokens.push(Token::Literal(literal));
+        }
     }
 
     fn tokenize(mut s: &str) -> Result<Vec<Token>, TemplateParseError> {
@@ -102,7 +108,8 @@ impl Template {
                 s = &s[start..];
             }
 
-            let (len, close_delim) = s.find_any(&["%}", "}}"])
+            let (len, close_delim) = s
+                .find_any(&["%}", "}}"])
                 .ok_or_else(|| TemplateParseError::Unmatched(open_delim.into()))?;
 
             let expected_close_delim = match open_delim {
@@ -121,17 +128,18 @@ impl Template {
                 "{{" => tokens.push(Token::Eval(inner.parse()?)),
                 "{%" => {
                     let inner_tokens: TokenStream = inner.parse()?;
-                    match inner_tokens
-                        .clone()
-                        .into_iter()
-                        .next()
-                        .ok_or(TemplateParseError::EmptyBlock)?
-                    {
+                    let mut left = inner_tokens.clone().into_iter();
+
+                    match left.next().ok_or(TemplateParseError::EmptyBlock)? {
                         TokenTree::Ident(ident) => match ident.to_string().as_ref() {
                             "end" => tokens.push(Token::BlockEnd),
                             "else" => tokens.push(Token::BlockContinue(inner_tokens)),
+                            "case" => {
+                                let pattern: TokenStream = left.collect();
+                                tokens.push(Token::BlockBegin(quote! { #pattern => }));
+                            }
                             _ => tokens.push(Token::BlockBegin(inner_tokens)),
-                        }
+                        },
                         _ => tokens.push(Token::BlockBegin(inner_tokens)),
                     }
                 }
@@ -168,7 +176,7 @@ impl Template {
 pub enum Token {
     Literal(String),
     Eval(TokenStream),
-    BlockBegin(TokenStream),    // if, for, while
+    BlockBegin(TokenStream),    // if, for, while, match, =>
     BlockContinue(TokenStream), // else, else if
     BlockEnd,                   // end
 }

@@ -50,7 +50,7 @@ Numbers: {% for number in self.numbers %}{{ number }}, {% end %}
 
 Templates are compiled directly into a `render(self)` function, so you can insert Rust pretty much anywhere and it will just be inlined.
 - `{{ }}` compile to `write!("{}")` calls, so you can use them with anything implementing `Display`.
-- `{% %}` begin or end blocks, which are compiled to regular Rust blocks, so you can use `for`-s, `while`-s and `if/else`-s.
+- `{% %}` begin or end blocks, which are compiled to regular Rust blocks, so you can use `for`-s, `while`-s and `if/else`-s. `match` uses a special `{% case ... %}` syntax for match arms instead of `=>`.
 
 ## Compiling
 
